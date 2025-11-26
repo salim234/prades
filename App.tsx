@@ -6,6 +6,7 @@ import { AddressSelectors } from './components/AddressSelectors';
 import { SignaturePad } from './components/SignaturePad';
 import { PetitionStats } from './components/PetitionStats';
 import { SignerList } from './components/SignerList';
+import { ExportManager } from './components/ExportManager';
 import { FormStep, SignerData, VILLAGE_POSITIONS } from './types';
 import { FileText, CheckCircle, ChevronRight, ShieldCheck, Flag, User, MapPin, Signature, Download, Loader2, UploadCloud } from 'lucide-react';
 
@@ -75,7 +76,7 @@ export default function App() {
         village_id: formData.village?.id,
         village_name: formData.village?.name,
         reason: FIXED_REASON,
-        signature: formData.signature // storing base64 directly as per schema discussion
+        signature: formData.signature // storing base64 directly
       };
 
       // 2. Insert into Supabase
@@ -105,421 +106,373 @@ export default function App() {
     try {
       // 1. Capture content using html2canvas
       const canvas = await html2canvas(letterRef.current, {
-        scale: 1.5, // Lower scale to reduce file size (1.5 is decent for A4 print)
+        scale: 1.5, // Lower scale to reduce file size
         useCORS: true,
+        allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
-        // Clone document to modify styles for capture without affecting UI
         onclone: (clonedDoc) => {
-           // Find the element in the cloned document
-           // We look for the div that has the shadow/border classes we want to strip
            const element = clonedDoc.querySelector('[data-pdf-content="true"]') as HTMLElement;
            if (element) {
-             element.style.boxShadow = 'none'; // Remove shadow for clean print look
-             element.style.transform = 'none'; // Remove any transforms
-             element.style.margin = '0'; // Reset margins to avoid offset
+             element.style.boxShadow = 'none';
+             element.style.transform = 'none';
+             element.style.margin = '0';
            }
         }
       });
       
-      // Use JPEG with 0.75 quality to significantly reduce file size compared to PNG
       const imgData = canvas.toDataURL('image/jpeg', 0.75);
 
       // 2. Initialize PDF (A4 Portrait)
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();   // 210mm
-      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
-
-      // 3. Define Margins
-      const margin = 15; // 15mm margin
-      const printableWidth = pdfWidth - (margin * 2);
-      const printableHeight = pdfHeight - (margin * 2);
-
-      // 4. Calculate dimensions to fit A4
-      const imgProps = pdf.getImageProperties(imgData);
+      const width = pdf.internal.pageSize.getWidth();
+      const height = pdf.internal.pageSize.getHeight();
       
-      let renderWidth = printableWidth;
-      let renderHeight = (imgProps.height * printableWidth) / imgProps.width;
-
-      // If the height is still too tall, scale based on height
-      if (renderHeight > printableHeight) {
-        renderHeight = printableHeight;
-        renderWidth = (imgProps.width * printableHeight) / imgProps.height;
-      }
-
-      // Center horizontally
-      const xOffset = (pdfWidth - renderWidth) / 2;
-      const yOffset = margin; // Top margin
-
-      // 5. Add image to PDF (JPEG format)
-      pdf.addImage(imgData, 'JPEG', xOffset, yOffset, renderWidth, renderHeight);
-
-      // 6. Save PDF
+      pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
       pdf.save(`Pernyataan_Sikap_${formData.fullName.replace(/\s+/g, '_')}.pdf`);
-
+      
     } catch (error) {
-      console.error("Download error:", error);
-      alert("Maaf, terjadi kesalahan saat membuat PDF.");
+      console.error("Download failed", error);
+      alert("Gagal mengunduh gambar. Silakan coba lagi.");
     } finally {
       setIsDownloading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen font-sans bg-slate-50">
-      {/* Header / Hero */}
-      <header className="bg-gradient-to-r from-indo-red to-indo-red-dark text-white pt-10 pb-20 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 bg-[url('https://picsum.photos/1200/400')] bg-cover bg-center mix-blend-overlay"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          
-          <div className="flex justify-center mb-6">
-            <img 
-              src="https://drive.google.com/thumbnail?id=10E957ZdhUc_tlBWwxUlCoh0AtOXMtlMn&sz=w1000" 
-              alt="Logo SalamBerdesa" 
-              className="h-24 md:h-32 object-contain drop-shadow-lg"
-            />
-          </div>
+  const renderProgressBar = () => {
+    const steps = [
+      { num: 1, label: 'Biodata' },
+      { num: 2, label: 'Alamat' },
+      { num: 3, label: 'Tanda Tangan' },
+      { num: 4, label: 'Selesai' }
+    ];
+    
+    return (
+      <div className="mb-8">
+        <div className="flex items-center justify-between relative">
+          <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-1 bg-gray-200 -z-10"></div>
+          {steps.map((s, idx) => (
+            <div key={idx} className="flex flex-col items-center bg-white px-2">
+              <div 
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors duration-300
+                  ${step >= idx 
+                    ? 'bg-indo-red border-indo-red text-white' 
+                    : 'bg-white border-gray-300 text-gray-400'
+                  }`}
+              >
+                {step > idx ? <CheckCircle className="w-5 h-5" /> : s.num}
+              </div>
+              <span className={`text-xs mt-1 font-medium ${step >= idx ? 'text-indo-red' : 'text-gray-400'}`}>
+                {s.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
-          <div className="inline-flex items-center bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold mb-4 border border-white/20">
-            <Flag className="w-3 h-3 mr-2" />
-            GERAKAN NASIONAL APARATUR DESA
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <div className="relative w-10 h-10 overflow-hidden rounded-full border-2 border-slate-100 shadow-sm">
+                <img 
+                  src="https://drive.google.com/thumbnail?id=1K2yC1z5D8P-gD_5C5_7_4y4y4y4y4y4y&sz=s200" 
+                  alt="Logo"
+                  className="w-full h-full object-cover"
+                  crossOrigin="anonymous"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    ((e.target as HTMLImageElement).nextSibling as HTMLElement).style.display = 'flex';
+                  }}
+                />
+                <div className="absolute inset-0 bg-indo-red text-white flex items-center justify-center font-bold text-lg" style={{display:'none'}}>
+                  I
+                </div>
+             </div>
+             <div>
+               <h1 className="text-lg font-bold text-slate-900 leading-tight">
+                 Gerakan Nasional
+               </h1>
+               <p className="text-xs text-indo-red font-bold tracking-wider">APARATUR DESA ASN 2026</p>
+             </div>
           </div>
-          <h1 className="text-3xl md:text-5xl font-serif font-bold mb-4 leading-tight">
-            Tuntut Keadilan:<br/>
-            Masuk UU ASN 2026
-          </h1>
-          <p className="text-lg md:text-xl text-red-50 max-w-2xl mx-auto font-light">
-            Bersama kita perjuangkan hak dan status kepegawaian Aparatur Pemerintah Desa demi masa depan yang lebih terjamin.
-          </p>
+          <a 
+            href={DRIVE_URL}
+            target="_blank"
+            rel="noopener noreferrer" 
+            className="text-xs font-medium text-gray-500 hover:text-indo-red flex items-center gap-1"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span className="hidden sm:inline">Info Validasi</span>
+          </a>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 -mt-10 relative z-20 pb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Left Column: Stats & Signer List */}
-          <div className="lg:col-span-1 space-y-6">
+          {/* Left Sidebar */}
+          <div className="lg:col-span-4 space-y-6">
             <PetitionStats />
-            
-            {/* List Penandatangan */}
+            <ExportManager />
             <SignerList />
-            
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-3 flex items-center">
-                <ShieldCheck className="w-5 h-5 mr-2 text-indo-red" />
-                Mengapa ini penting?
-              </h3>
-              <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                Aparatur Desa adalah garda terdepan pelayanan publik. Namun, status kepegawaian mereka seringkali tidak jelas. 
-                Revisi UU ASN 2026 adalah momentum emas untuk menetapkan standar kesejahteraan yang layak.
-              </p>
-            </div>
           </div>
 
-          {/* Right Column: The Petition Form */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-xl overflow-hidden border border-slate-100">
-              
-              {/* Progress Stepper (Tab Layout) */}
-              {step !== FormStep.SUCCESS && (
-                <div className="flex bg-white border-b border-gray-200">
-                   {/* Step 1: Data Diri */}
-                   <div className={`flex-1 py-4 flex flex-col sm:flex-row items-center justify-center transition-colors duration-200 border-b-2 ${
-                     step >= FormStep.DETAILS 
-                       ? 'border-indo-red text-indo-red bg-red-50/10' 
-                       : 'border-transparent text-slate-400'
-                   }`}>
-                     <User className={`w-5 h-5 mb-1 sm:mb-0 sm:mr-2 ${step >= FormStep.DETAILS ? 'stroke-[2.5px]' : ''}`} />
-                     <span className="font-semibold text-xs sm:text-sm tracking-wide">Data Diri</span>
-                   </div>
+          {/* Main Form Area */}
+          <div className="lg:col-span-8">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+              <div className="bg-indo-red px-6 py-4">
+                <h2 className="text-white font-bold text-xl flex items-center gap-2">
+                  <FileText className="w-6 h-6" />
+                  Formulir Pernyataan Sikap
+                </h2>
+                <p className="text-red-100 text-sm mt-1">
+                  Isi data dengan benar untuk validitas tuntutan nasional.
+                </p>
+              </div>
 
-                   {/* Step 2: Alamat */}
-                   <div className={`flex-1 py-4 flex flex-col sm:flex-row items-center justify-center transition-colors duration-200 border-b-2 ${
-                     step >= FormStep.ADDRESS 
-                       ? 'border-indo-red text-indo-red bg-red-50/10' 
-                       : 'border-transparent text-slate-400'
-                   }`}>
-                     <MapPin className={`w-5 h-5 mb-1 sm:mb-0 sm:mr-2 ${step >= FormStep.ADDRESS ? 'stroke-[2.5px]' : ''}`} />
-                     <span className="font-semibold text-xs sm:text-sm tracking-wide">Alamat</span>
-                   </div>
+              <div className="p-6 sm:p-8">
+                {step !== FormStep.SUCCESS && renderProgressBar()}
 
-                   {/* Step 3: Tanda Tangan */}
-                   <div className={`flex-1 py-4 flex flex-col sm:flex-row items-center justify-center transition-colors duration-200 border-b-2 ${
-                     step >= FormStep.SIGNATURE 
-                       ? 'border-indo-red text-indo-red bg-red-50/10' 
-                       : 'border-transparent text-slate-400'
-                   }`}>
-                     <Signature className={`w-5 h-5 mb-1 sm:mb-0 sm:mr-2 ${step >= FormStep.SIGNATURE ? 'stroke-[2.5px]' : ''}`} />
-                     <span className="font-semibold text-xs sm:text-sm tracking-wide">Pernyataan Sikap</span>
-                   </div>
-                </div>
-              )}
-
-              <div className="p-6 md:p-8">
+                {/* Step 1: Details */}
                 {step === FormStep.DETAILS && (
                   <div className="space-y-6 animate-fade-in">
-                    <h2 className="text-2xl font-bold text-slate-800">Identitas Penandatangan</h2>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap (Sesuai KTP)</label>
-                      <input
-                        type="text"
-                        className="w-full rounded-md border-gray-300 border p-3 focus:ring-indo-red focus:border-indo-red transition-shadow shadow-sm"
-                        placeholder="Contoh: Budi Santoso"
-                        value={formData.fullName}
-                        onChange={(e) => setFormData({...formData, fullName: e.target.value})}
-                      />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-gray-700 font-semibold border-b pb-2">
+                         <User className="w-5 h-5 text-indo-red" />
+                         <h3>Identitas Diri</h3>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap (Sesuai KTP)</label>
+                        <input
+                          type="text"
+                          value={formData.fullName}
+                          onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indo-red focus:border-indo-red transition-all"
+                          placeholder="Contoh: Budi Santoso"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Jabatan di Desa</label>
+                        <select
+                          value={formData.position}
+                          onChange={(e) => setFormData({...formData, position: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indo-red focus:border-indo-red transition-all bg-white"
+                        >
+                          <option value="">-- Pilih Jabatan --</option>
+                          {VILLAGE_POSITIONS.map((pos) => (
+                            <option key={pos} value={pos}>{pos}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Jabatan di Desa</label>
-                      <select
-                        className="w-full rounded-md border-gray-300 border p-3 focus:ring-indo-red focus:border-indo-red shadow-sm bg-white"
-                        value={formData.position}
-                        onChange={(e) => setFormData({...formData, position: e.target.value})}
-                      >
-                        <option value="">-- Pilih Jabatan --</option>
-                        {VILLAGE_POSITIONS.map(pos => (
-                          <option key={pos} value={pos}>{pos}</option>
-                        ))}
-                      </select>
-                    </div>
-
                     <button
                       onClick={handleNext}
-                      className="w-full bg-indo-red hover:bg-indo-red-dark text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-red-200 flex items-center justify-center"
+                      className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
                     >
-                      Lanjut ke Alamat
-                      <ChevronRight className="w-5 h-5 ml-2" />
+                      Lanjut ke Alamat <ChevronRight className="w-5 h-5" />
                     </button>
                   </div>
                 )}
 
+                {/* Step 2: Address */}
                 {step === FormStep.ADDRESS && (
                   <div className="space-y-6 animate-fade-in">
-                     <h2 className="text-2xl font-bold text-slate-800">Verifikasi Wilayah</h2>
-                     <p className="text-slate-500 text-sm">Pastikan data wilayah sesuai dengan data Kemendagri agar pernyataan sikap valid.</p>
-                     
-                     <AddressSelectors
-                       onAddressChange={(p, r, d, v) => setFormData({
-                         ...formData,
-                         province: p,
-                         regency: r,
-                         district: d,
-                         village: v
-                       })}
-                     />
-
-                     <div className="flex gap-3 pt-4">
-                       <button
-                         onClick={() => setStep(FormStep.DETAILS)}
-                         className="flex-1 bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg hover:bg-gray-50 transition-colors"
-                       >
-                         Kembali
-                       </button>
-                       <button
-                         onClick={handleNext}
-                         className="flex-1 bg-indo-red hover:bg-indo-red-dark text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-red-200 flex items-center justify-center"
-                       >
-                         Lanjut
-                         <ChevronRight className="w-5 h-5 ml-2" />
-                       </button>
-                     </div>
+                    <AddressSelectors 
+                      onAddressChange={(p, r, d, v) => setFormData({
+                        ...formData, 
+                        province: p, 
+                        regency: r, 
+                        district: d, 
+                        village: v
+                      })}
+                    />
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setStep(FormStep.DETAILS)}
+                        className="w-1/3 bg-gray-100 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors"
+                      >
+                        Kembali
+                      </button>
+                      <button
+                        onClick={handleNext}
+                        className="w-2/3 bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                      >
+                        Lanjut Tanda Tangan <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                 )}
 
+                {/* Step 3: Signature */}
                 {step === FormStep.SIGNATURE && (
                   <div className="space-y-6 animate-fade-in">
-                    <h2 className="text-2xl font-bold text-slate-800">Pernyataan Sikap</h2>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-3">
-                        Pernyataan yang ditandatangani
-                      </label>
-                      
-                      <div className="p-5 bg-red-50 border border-red-100 rounded-lg shadow-inner">
-                        <div className="flex gap-3">
-                           <div className="flex-shrink-0 mt-1">
-                              <ShieldCheck className="w-5 h-5 text-indo-red" />
-                           </div>
-                           <p className="text-lg font-serif font-medium text-indo-red-dark leading-relaxed">
-                             "{FIXED_REASON}"
-                           </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Tanda Tangan Digital</label>
-                      <SignaturePad 
-                        onSign={handleSign} 
-                        onClear={() => setFormData(prev => ({...prev, signature: ''}))}
-                      />
-                    </div>
-
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-                      Dengan menekan tombol di bawah, saya menyatakan data yang saya isi adalah benar dan saya mendukung penuh pernyataan sikap ini.
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                       <button
-                         onClick={() => setStep(FormStep.ADDRESS)}
-                         className="flex-1 bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg hover:bg-gray-50 transition-colors"
-                       >
-                         Kembali
-                       </button>
-                       <button
-                         onClick={handleSubmit}
-                         disabled={!formData.signature || isSubmitting}
-                         className="flex-1 bg-indo-red hover:bg-indo-red-dark disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-red-200 flex items-center justify-center"
-                       >
-                         {isSubmitting ? (
-                           <>
-                             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                             Menyimpan...
-                           </>
-                         ) : (
-                           <>
-                             <FileText className="w-5 h-5 mr-2" />
-                             Tandatangani Pernyataan Sikap
-                           </>
-                         )}
-                       </button>
+                     <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                        <h4 className="font-bold text-indo-red mb-2 flex items-center gap-2">
+                          <Flag className="w-5 h-5" />
+                          Pernyataan Sikap:
+                        </h4>
+                        <p className="text-gray-800 text-lg font-serif italic">
+                          "{FIXED_REASON}"
+                        </p>
                      </div>
+
+                     <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Tanda Tangan Digital</label>
+                        <SignaturePad 
+                          onSign={handleSign} 
+                          onClear={() => setFormData({...formData, signature: ''})} 
+                        />
+                     </div>
+
+                     <div className="flex gap-3 pt-4">
+                      <button
+                        onClick={() => setStep(FormStep.ADDRESS)}
+                        className="w-1/3 bg-gray-100 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-200 transition-colors"
+                      >
+                        Kembali
+                      </button>
+                      <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting || !formData.signature}
+                        className="w-2/3 bg-indo-red text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-200"
+                      >
+                        {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <UploadCloud className="w-5 h-5" />}
+                        Kirim Pernyataan
+                      </button>
+                    </div>
                   </div>
                 )}
 
+                {/* Step 4: Success & Download */}
                 {step === FormStep.SUCCESS && (
-                   <div className="text-center py-10 animate-fade-in">
-                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <CheckCircle className="w-10 h-10 text-green-600" />
-                      </div>
-                      <h2 className="text-3xl font-bold text-slate-900 mb-2">Terima Kasih!</h2>
-                      <p className="text-slate-600 mb-8 max-w-md mx-auto">
-                        Aspirasi Anda telah kami rekam dalam bentuk dokumen resmi.
+                  <div className="text-center space-y-8 animate-fade-in">
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 text-green-600 mb-2">
+                      <CheckCircle className="w-10 h-10" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-gray-900">Terima Kasih!</h3>
+                      <p className="text-gray-500 mt-2">
+                        Pernyataan sikap Anda telah berhasil disimpan dan dicatat dalam database nasional.
                       </p>
+                    </div>
 
-                      {/* Dokumen Pernyataan Sikap */}
-                      <div 
-                        ref={letterRef} 
-                        data-pdf-content="true"
-                        className="bg-white p-8 md:p-12 rounded-sm shadow-2xl border border-gray-200 max-w-2xl mx-auto mb-8 text-left relative transform transition-all duration-300 font-serif"
-                      >
-                        {/* Header aksen kertas */}
-                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indo-red to-indo-red-dark"></div>
-                        
-                        {/* Kop Surat Sederhana */}
-                        <div className="text-center mb-8 border-b-4 border-double border-slate-800 pb-4 pt-2">
-                            <h1 className="font-bold text-2xl md:text-3xl text-slate-900 tracking-wide mb-1">PERNYATAAN SIKAP</h1>
-                            <p className="text-xs md:text-sm font-bold text-slate-600 uppercase tracking-[0.3em]">Gerakan Nasional Aparatur Desa</p>
-                        </div>
-
-                        {/* Tujuan Surat */}
-                        <div className="mb-8 text-base text-slate-900 leading-relaxed">
-                            <p>Kepada Yth,</p>
-                            <p className="font-bold">Bapak Presiden Republik Indonesia</p>
-                            <p>di Jakarta</p>
-                        </div>
-
-                        {/* Isi Surat */}
-                        <div className="text-sm md:text-base text-slate-900 space-y-4 leading-relaxed text-justify">
-                            <p>Dengan hormat,</p>
-                            <p>Saya yang bertanda tangan di bawah ini:</p>
-
-                            {/* Tabel Data Diri Rapi */}
-                            <div className="pl-0 md:pl-4 my-4">
-                                <table className="w-full text-sm md:text-base">
-                                    <tbody>
-                                        <tr>
-                                            <td className="w-24 md:w-32 py-1 align-top text-slate-700">Nama</td>
-                                            <td className="w-4 py-1 align-top text-slate-700">:</td>
-                                            <td className="py-1 align-top font-bold text-slate-900 uppercase">{formData.fullName}</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="py-1 align-top text-slate-700">Jabatan</td>
-                                            <td className="py-1 align-top text-slate-700">:</td>
-                                            <td className="py-1 align-top font-bold text-slate-900">{formData.position}</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="py-1 align-top text-slate-700">Alamat</td>
-                                            <td className="py-1 align-top text-slate-700">:</td>
-                                            <td className="py-1 align-top uppercase leading-relaxed text-slate-900">
-                                                DS. {formData.village?.name}, KEC. {formData.district?.name},<br/>
-                                                {formData.regency?.name}, {formData.province?.name}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <p className="indent-8">
-                                Dengan ini menyatakan sikap untuk mendukung penuh dan <strong className="text-black">"{FIXED_REASON}"</strong> sebagai upaya menjamin kesejahteraan dan kepastian hukum bagi pelayan masyarakat di tingkat desa.
-                            </p>
-
-                            <p className="mt-4 font-bold text-indo-red-dark italic text-center">
-                                "Kami akan memenuhi jalanan Jakarta, jika Tuntutan ini tidak Negara Dengarkan dan Penuhi."
-                            </p>
-
-                            <p>Demikian pernyataan sikap ini saya buat dengan kesadaran penuh dan tanpa paksaan dari pihak manapun sebagai bentuk aspirasi konstitusional.</p>
-                        </div>
-
-                        {/* Tanda Tangan */}
-                        <div className="mt-16 flex justify-end">
-                            <div className="text-center min-w-[200px]">
-                                <p className="text-sm text-slate-700 mb-1">
-                                    {formData.village?.name || 'Tempat'}, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                </p>
-                                <p className="text-sm text-slate-700 font-bold mb-2">Hormat Saya,</p>
-                                
-                                <div className="relative h-24 w-full flex items-center justify-center my-2">
-                                     {formData.signature && (
-                                        <img src={formData.signature} alt="Signature" className="h-full object-contain filter drop-shadow-sm" />
-                                     )}
-                                </div>
-                                
-                                <p className="text-base font-bold text-slate-900 border-b border-slate-900 inline-block min-w-full pb-1 uppercase">
-                                    {formData.fullName}
-                                </p>
-                                <p className="text-xs text-slate-600 mt-1">{formData.position}</p>
-                            </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col md:flex-row gap-4 justify-center max-w-2xl mx-auto mb-4">
-                         <button
-                           onClick={handleDownload}
-                           disabled={isDownloading}
-                           className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed"
-                         >
-                           {isDownloading ? (
-                             <>
-                               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                               Memproses PDF...
-                             </>
-                           ) : (
-                             <>
-                               <Download className="w-5 h-5 mr-2" />
-                               Unduh Dokumen (PDF)
-                             </>
-                           )}
-                         </button>
-                         <a
-                            href={DRIVE_URL}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center justify-center"
+                    {/* Preview Surat */}
+                    <div className="overflow-hidden bg-gray-50 p-4 rounded-xl border border-gray-200">
+                      <p className="text-sm text-gray-500 mb-4 flex items-center justify-center gap-2">
+                        <FileText className="w-4 h-4" /> Preview Dokumen Digital
+                      </p>
+                      
+                      <div className="overflow-x-auto flex justify-center pb-4">
+                        {/* THE LETTER - This div is captured by html2canvas */}
+                        <div 
+                           ref={letterRef}
+                           data-pdf-content="true"
+                           className="bg-white w-[210mm] min-h-[297mm] p-[25mm] text-left shadow-lg mx-auto relative text-black"
+                           style={{ fontFamily: 'Times New Roman, serif' }}
                         >
-                            <UploadCloud className="w-5 h-5 mr-2" />
-                            Upload ke Drive
-                        </a>
-                      </div>
-                      <p className="text-sm text-slate-500 mb-8 max-w-md mx-auto">
-                        Silakan unduh dokumen PDF terlebih dahulu, kemudian unggah ke Google Drive melalui tombol di atas sebagai arsip nasional.
-                      </p>
-                   </div>
-                )}
+                           {/* Header Bar */}
+                           <div className="w-full h-1.5 bg-[#A3191C] mb-6"></div>
+                           
+                           {/* Letter Head */}
+                           <div className="text-center mb-8">
+                             <h1 className="text-3xl font-bold text-[#0f172a] mb-2 tracking-wide uppercase">PERNYATAAN SIKAP</h1>
+                             <h2 className="text-sm font-normal text-[#0f172a] uppercase tracking-[0.25em]">GERAKAN NASIONAL APARATUR DESA</h2>
+                             <div className="mt-4 border-b-2 border-black mb-1"></div>
+                             <div className="border-b border-black"></div>
+                           </div>
 
+                           {/* Body */}
+                           <div className="font-sans text-lg leading-relaxed space-y-6">
+                              <div>
+                                <p>Kepada Yth,</p>
+                                <p className="font-bold">Bapak Presiden Republik Indonesia</p>
+                                <p>di Jakarta</p>
+                              </div>
+
+                              <p>Dengan hormat,</p>
+                              <p>Saya yang bertanda tangan di bawah ini:</p>
+
+                              <table className="w-full ml-4">
+                                <tbody>
+                                  <tr>
+                                    <td className="w-32 py-1 align-top">Nama</td>
+                                    <td className="w-4 py-1 align-top">:</td>
+                                    <td className="py-1 font-bold align-top uppercase">{formData.fullName}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="py-1 align-top">Jabatan</td>
+                                    <td className="py-1 align-top">:</td>
+                                    <td className="py-1 font-bold align-top">{formData.position}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="py-1 align-top">Alamat</td>
+                                    <td className="py-1 align-top">:</td>
+                                    <td className="py-1 align-top uppercase">
+                                      DS. {formData.village?.name}, KEC. {formData.district?.name},<br/>
+                                      {formData.regency?.name}, {formData.province?.name}
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+
+                              <p className="text-justify indent-8">
+                                Dengan ini menyatakan sikap untuk mendukung penuh dan 
+                                "Menuntut kepastian status kepegawaian sebagai ASN Desa dalam UU ASN 2026" 
+                                sebagai upaya menjamin kesejahteraan dan kepastian hukum bagi pelayan masyarakat di tingkat desa.
+                              </p>
+
+                              <div className="py-4 text-center">
+                                <p className="font-serif italic font-bold text-[#A3191C] text-xl px-8 leading-relaxed">
+                                  "Kami akan memenuhi jalanan Jakarta, jika Tuntutan ini tidak Negara Dengarkan dan Penuhi."
+                                </p>
+                              </div>
+
+                              <p className="text-justify">
+                                Demikian pernyataan sikap ini saya buat dengan kesadaran penuh dan tanpa paksaan dari pihak manapun sebagai bentuk aspirasi konstitusional.
+                              </p>
+                           </div>
+
+                           {/* Signature Section */}
+                           <div className="mt-16 flex justify-end">
+                             <div className="text-center min-w-[200px]">
+                               <p className="mb-1 font-sans uppercase">{formData.village?.name || 'Tempat'}, {new Date().toLocaleDateString('id-ID', {day: 'numeric', month:'long', year:'numeric'})}</p>
+                               <p className="mb-4 font-sans">Hormat Saya,</p>
+                               <div className="h-24 flex items-center justify-center my-2">
+                                  {formData.signature && (
+                                    <img src={formData.signature} alt="Tanda Tangan" className="max-h-full max-w-full" />
+                                  )}
+                               </div>
+                               <p className="font-bold border-b border-black inline-block min-w-[150px] uppercase font-sans">{formData.fullName}</p>
+                               <p className="text-sm mt-1 font-sans">{formData.position}</p>
+                             </div>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 justify-center">
+                      <button
+                        onClick={() => window.location.reload()}
+                        className="px-6 py-3 border border-gray-300 rounded-lg font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        Buat Baru
+                      </button>
+                      <button
+                        onClick={handleDownload}
+                        disabled={isDownloading}
+                        className="px-6 py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-lg"
+                      >
+                        {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                        Unduh Bukti PDF
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
