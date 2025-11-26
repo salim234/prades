@@ -175,7 +175,7 @@ export default function App() {
           <div className="flex justify-center mb-6">
             <img 
               src="https://drive.google.com/thumbnail?id=10E957ZdhUc_tlBWwxUlCoh0AtOXMtlMn&sz=w1000" 
-              alt="Logo PPDI" 
+              alt="Logo SalamBerdesa" 
               className="h-24 md:h-32 object-contain drop-shadow-lg"
             />
           </div>
