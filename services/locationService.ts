@@ -1,33 +1,35 @@
 import { Province, Regency, District, Village } from '../types';
 
-const BASE_URL = 'https://www.emsifa.com/api-wilayah-indonesia/api';
-
-// Fallback data in case the API is down or rate limited
-const FALLBACK_PROVINCES: Province[] = [
-  { id: '31', name: 'DKI JAKARTA' },
-  { id: '32', name: 'JAWA BARAT' },
-  { id: '33', name: 'JAWA TENGAH' },
-  { id: '34', name: 'DI YOGYAKARTA' },
-  { id: '35', name: 'JAWA TIMUR' },
-];
+// Menggunakan API dari ibnux (GitHub Pages) yang lebih stabil dan mendukung CORS
+const BASE_URL = 'https://ibnux.github.io/data-indonesia';
 
 export const locationService = {
   getProvinces: async (): Promise<Province[]> => {
     try {
-      const response = await fetch(`${BASE_URL}/provinces.json`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      return await response.json();
+      const response = await fetch(`${BASE_URL}/propinsi.json`);
+      if (!response.ok) throw new Error('Failed to fetch provinces');
+      const data = await response.json();
+      // Map 'nama' to 'name'
+      return data.map((item: any) => ({
+        id: item.id,
+        name: item.nama
+      }));
     } catch (error) {
-      console.warn('Using fallback provinces due to API error:', error);
-      return FALLBACK_PROVINCES;
+      console.error('Error fetching provinces:', error);
+      return [];
     }
   },
 
   getRegencies: async (provinceId: string): Promise<Regency[]> => {
     try {
-      const response = await fetch(`${BASE_URL}/regencies/${provinceId}.json`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      return await response.json();
+      const response = await fetch(`${BASE_URL}/kabupaten/${provinceId}.json`);
+      if (!response.ok) throw new Error('Failed to fetch regencies');
+      const data = await response.json();
+      return data.map((item: any) => ({
+        id: item.id,
+        province_id: item.id_propinsi,
+        name: item.nama
+      }));
     } catch (error) {
       console.error(error);
       return [];
@@ -36,9 +38,14 @@ export const locationService = {
 
   getDistricts: async (regencyId: string): Promise<District[]> => {
     try {
-      const response = await fetch(`${BASE_URL}/districts/${regencyId}.json`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      return await response.json();
+      const response = await fetch(`${BASE_URL}/kecamatan/${regencyId}.json`);
+      if (!response.ok) throw new Error('Failed to fetch districts');
+      const data = await response.json();
+      return data.map((item: any) => ({
+        id: item.id,
+        regency_id: item.id_kabupaten,
+        name: item.nama
+      }));
     } catch (error) {
       console.error(error);
       return [];
@@ -47,9 +54,14 @@ export const locationService = {
 
   getVillages: async (districtId: string): Promise<Village[]> => {
     try {
-      const response = await fetch(`${BASE_URL}/villages/${districtId}.json`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      return await response.json();
+      const response = await fetch(`${BASE_URL}/kelurahan/${districtId}.json`);
+      if (!response.ok) throw new Error('Failed to fetch villages');
+      const data = await response.json();
+      return data.map((item: any) => ({
+        id: item.id,
+        district_id: item.id_kecamatan,
+        name: item.nama
+      }));
     } catch (error) {
       console.error(error);
       return [];
